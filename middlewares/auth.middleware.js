@@ -1,23 +1,37 @@
 const { BlackListModel } = require("../model/blacklistUser.model");
+const jwt = require("jsonwebtoken");
+const { UserModel } = require("../model/user.model");
 
 const authMiddleware = async (req, res, next) => {
-    const token = req.headers.authorization;
-    if (!token) {
-        return res.status(400).json({ "msg": "You are unauthorized" });
-    }
-    try {
-        const decoded = jwt.verify(token, 'masai');
-        const isTokenBlacklisted = await BlackListModel.findOne({ token });
-        if (isTokenBlacklisted) {
-            res.status(401).json({ "msg": "User has invalid token" });
-        } else {
-            req.userId = decoded.userId;
-            next();
+    const token = req.headers.authorization?.split(" ")[1];
+    if (token) {
+        const blacklistToken = await BlackListModel.findOne({ token });
+        if (blacklistToken) {
+            return res.status(401).json({ "msg": 'you are unauthorized' });
         }
-    } catch (err) {
-        res.status(400).json({ "msg": err });
+        jwt.verify(token, "masai", async (err, decoded) => {
+            if (err) {
+                console.error("JWT verification error:", err);
+                return res.status(401).json({ error: "Unauthorized", message: "Invalid token" });
+            }
+            if (decoded) {
+                const { userId } = decoded;
+                const user = await UserModel.findOne({ _id: userId });
+                if (!user) {
+                    return res.status(404).json({ error: "User not found", message: "User does not exist" });
+                }
+                // req.role = user.role;
+                // console.log("User role:", req.role);
+                next();
+            } else {
+                res.status(401).json({ error: "Unauthorized", message: "User not authorized" });
+            }
+        });
+    } else {
+        res.status(401).json({ error: "Unauthorized", message: "Token not provided" });
     }
-}
+};
+
 
 module.exports = {
     authMiddleware
